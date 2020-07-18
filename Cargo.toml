@@ -6,4 +6,22 @@ edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+
 [dependencies]
+log = "0.4.11"
+chrono = "0.4"
+env_logger = "0.7.1"
+
+[dependencies.tokio-postgres]
+version = "0.5"
+features = ["with-chrono-0_4"]
+
+[dependencies.tokio]
+version = "0.2"
+features = ["macros"] 
+
+[dependencies.serenity]
+git = "https://github.com/acdenisSK/serenity"
+branch = "await_next"
+default-features = false
+features = ["client","utils", "gateway", "rustls_backend", "model","framework", "standard_framework"]

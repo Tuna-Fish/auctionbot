@@ -1,0 +1,41 @@
+DROP TABLE IF EXISTS races;
+CREATE TABLE races (
+	name varchar(12) PRIMARY KEY,
+	descr TEXT
+);
+
+INSERT INTO races (name, descr) VALUES
+	('CRABS',E'Our crustacean overlords.'),
+	('OGRES', E'Tough bastards, potentially with multiple heads or somesuch.'),
+	('OBAKEMONO',E'Tough bastards with japan-themed weapons and armor. what\'s not to love?'),
+	('HOBURGS',E'Tiny doods with occasional mechas. Mechas not guaranteed.'),
+	('ABYSIANS',E'Children of flame.'),
+	('PALEONES',E'Subterranean dwellers, occasional cavern wights but that\'s really unlikely in ma.'),
+	('AVVITES',E'Giant children of the gods.'),
+	('CAELIANS',E'Flyboys.'),
+	('CYCLOPES',E'Who needs depth perception anyway?'),
+	('DUSTWALKERS',E'Hot mummies in your area!'),
+	('ELEPHANTMEN',E'What do you mean armies need more than 2 soldiers?'),
+	('FOMORIANS',E'Giants with a furry fetish'),
+	('FOULSPAWN',E'Because Gacha troops are fun.'),
+	('BEASTMEN',E'Pan-style clop clop.'),
+	('LAMIAS',E'Snake people with tons of regen.'),
+	('OPHIDIANS',E'Snake people with wtfbbq poison auras'),
+	('LIZARDS',E'Your lizard overlords.'),
+	('SOBEKS',E'Your lizard overlords, this time with 100% more muscle.'),
+	('COLOSSI',E'Mediterranean-themed medium-sized giants.'),
+	('NAGAS',E'Snake-people with gaze attacks.'),
+	('BAKEMONO',E'Japanese goblins'),
+	('PRIMATES',E'Monkeys from the forests.'),
+	('SIDHE',E'Gaelic-style elves.'),
+	('TENGU',E'Japanese-themed storm fliers.'),
+	('VAETTI',E'Tiny forest-people.'),
+	('VANIR',E'Frost elves.'),
+	('ZOTZ',E'Bat-people.'),
+	('ILLITHIDS',E'Mind-munching amphibians.'),
+	('ASMEGS',E'Norse Giants.'),
+	('GIGANTE',E'Greek Giants.'),
+	('ROMANS',E'Imperial humans. You get ~10% discount on all your mages'),
+	('RUSSIANS',E'Boreal humans. You get 1-4 rp research bonus on all your mages'),
+	('CHINESE',E'Oriental humans. You are guaranteed to get both a heavy cavalry sacred, and rec-everywhere heavy cavalry. (minimum of 15 prot and a lance)'),
+	('AFRICANS',E'Austral humans. Not much armor but often spider riders. Standing in for Mictlan because natgen doesn\'t have them. You get EA Mictlan\'s items, summons, blood dominion mechanics, additional B2 on your big mages, and an additional cheap blood hunter.');
