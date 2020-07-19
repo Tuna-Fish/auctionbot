@@ -11,6 +11,7 @@ edition = "2018"
 log = "0.4.11"
 chrono = "0.4"
 env_logger = "0.7.1"
+rand = "0.7"
 
 [dependencies.tokio-postgres]
 version = "0.5"

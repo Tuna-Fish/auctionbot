@@ -26,6 +26,7 @@ use crate::DbClientContainer;
 use crate::GameStateContainer;
 use crate::GameState;
 use chrono::NaiveDateTime;
+use crate::auction::auction;
 //general
 
 // Discord userids are u64s. Postgres does not natively support that data type. Since we just pass
@@ -309,7 +310,18 @@ async fn unregister(ctx: &Context, msg: &Message, _args: Args) -> CommandResult 
 //admin
 
 #[command]
-async fn astatus(_ctx: &Context, _msg: &Message, _args: Args) -> CommandResult {
+async fn runauction(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
+    let data = ctx.data.read().await;
+
+    let arcdb = data.get::<DbClientContainer>().expect("expected db client in sharemap");
+    
+    if !isadmin(&arcdb, &msg.author.id).await{
+            let _ = msg.channel_id.say(&ctx.http, "You are not in admin list").await;
+            return Ok(());
+    }
+    
+    auction(ctx).await;
+    
     Ok(())
 }
 

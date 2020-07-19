@@ -1,6 +1,7 @@
 mod config;
 
 mod commands;
+mod auction;
 
 use log::{debug, error, info};
 use std::sync::Arc;
@@ -51,7 +52,7 @@ struct General;
 struct Auction;
 
 #[group]
-#[commands(astatus,setstate,getstate,kick)]
+#[commands(runauction,setstate,getstate,kick)]
 struct Admin;
 
 #[derive(Copy,Clone)]
