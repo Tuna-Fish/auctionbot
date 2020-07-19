@@ -35,7 +35,7 @@ impl EventHandler for Handler {
     async fn ready(&self, _ctx: Context, ready: Ready) {
         println!("{} is connected!", ready.user.name);
     }
-    async fn message(&self, ctx: Context, msg: Message) {
+    async fn message(&self, _ctx: Context, msg: Message) {
     
     info!("[{}]: {}",msg.author.name, msg.content);
     }
@@ -43,7 +43,7 @@ impl EventHandler for Handler {
 
 
 #[group]
-#[commands(help,list,register,hello2)]
+#[commands(help,listwins,register,hello2)]
 struct General;
 
 #[group]

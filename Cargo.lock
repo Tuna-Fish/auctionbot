@@ -77,6 +77,7 @@ dependencies = [
  "chrono",
  "env_logger",
  "log",
+ "rand",
  "serenity",
  "tokio",
  "tokio-postgres",

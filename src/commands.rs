@@ -54,18 +54,58 @@ async fn get_player_uid_and_points(arcdb : &Arc<tokio_postgres::Client>, id: &Us
     }
 }
 
+async fn wins(arcdb : &Arc<tokio_postgres::Client>, userid: Option<i64>, day: Option<i16>) -> String {
+    let rows = match (userid, day) {
+(None,None)         => arcdb.query("SELECT users.name,wins.item,wins.day,wins.cost FROM wins INNER JOIN users ON wins.userid = users.id ORDER BY wins.day",&[]).await,
+(None,Some(d))      => arcdb.query("SELECT users.name,wins.item,wins.day,wins.cost FROM wins INNER JOIN users ON wins.userid = users.id WHERE wins.day = $1 ORDER BY wins.day",&[&d]).await,
+(Some(uid), None)   => arcdb.query("SELECT users.name,wins.item,wins.day,wins.cost FROM wins INNER JOIN users ON wins.userid = users.id WHERE wins.userid = $1 ORDER BY wins.day",&[&uid]).await,
+(Some(uid),Some(d)) => arcdb.query("SELECT users.name,wins.item,wins.day,wins.cost FROM wins INNER JOIN users ON wins.userid = users.id WHERE wins.userid = $1 AND wins.day = $2 ORDER BY WINS.DAY",&[&uid,&d]).await,
+    }.expect("db error fetching wins");
+    let mut s = String::from("```day|cost|             item             |winner\n");
+    s.reserve(70*rows.len());
+    for row in rows {
+        let user_name   : String = row.get(0);
+        let item_name   : String = row.get(1);
+        let costint     : i32    = row.get(3);
+        let cost        : String = costint.to_string();
+        let dayint      : i16    = row.get(2);
+        let day         : String = dayint.to_string();
+
+       s.push_str(&format!("{:>3}|{:>4}|{:>30}|{}\n",day,cost,item_name,user_name));
+    }
+    s.push_str("```");
+    s
+}
+
+
 #[command]
 async fn help(_ctx: &Context, _msg: &Message, _args: Args) -> CommandResult {
     Ok(())
 }
 
 #[command]
-async fn list(_ctx: &Context, _msg: &Message, _args: Args) -> CommandResult {
+async fn listwins(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
+    let data = ctx.data.read().await;
+    let arcdb = data.get::<DbClientContainer>().expect("expected db client in sharemap");
+    let userid = getuid_i64(msg.author.id);
+    let s = match args.len() {
+        0 => wins(&arcdb, Some(userid),None).await,
+        1 => match &args.single::<String>().unwrap()[..] {
+            "help" => "usage:\n to list bids you've won: listbids\nto list bids anyone has won: listbids all\n to list bids anyone won on a given day: listbids <day>\n".to_string(),
+            "all" => wins(&arcdb, None, None).await,
+            arg  => if let Ok(i) = arg.parse::<i16>() {
+                wins(&arcdb, None, Some(i)).await
+            } else {"unrecognized parameter".to_string()},
+        }
+        _ => "too many parameters".to_string()
+    };
+
+    let _ = msg.channel_id.say(&ctx.http, &s).await;
     Ok(())
 }
 
 #[command]
-async fn state(_ctx: &Context, _msg: &Message, _args: Args) -> CommandResult {
+async fn status(_ctx: &Context, _msg: &Message, _args: Args) -> CommandResult {
     Ok(())
 }
 #[command]
@@ -77,7 +117,7 @@ async fn bid(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
     let day = match *gamestatereadguard {
         GameState::Auction{day, ..} => day,
         _ => {
-            msg.channel_id.say(&ctx.http, "Bidding is not open").await;
+            let _ =msg.channel_id.say(&ctx.http, "Bidding is not open").await;
             return Ok(())
         }
     };
@@ -86,7 +126,7 @@ async fn bid(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
     let (playerid, points) = match get_player_uid_and_points(&arcdb,&msg.author.id).await {
             Some((uid,points)) => (uid,points),
             None => {
-                msg.channel_id.say(&ctx.http, "You are not registered to bid").await;
+                let _ = msg.channel_id.say(&ctx.http, "You are not registered to bid").await;
                 return Ok(());
             }
     };
@@ -205,7 +245,7 @@ async fn register(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
     match *gamestatereadguard {
         GameState::Registration => (),
         _ => {
-            msg.channel_id.say(&ctx.http, "Registration is closed!").await;
+            let _ = msg.channel_id.say(&ctx.http, "Registration is closed!").await;
             return Ok(())
         }
     }
@@ -236,7 +276,7 @@ async fn unregister(ctx: &Context, msg: &Message, _args: Args) -> CommandResult 
     match *gamestatereadguard {
         GameState::Registration => (),
         _ => {
-            msg.channel_id.say(&ctx.http, "Registration is closed!").await;
+            let _ = msg.channel_id.say(&ctx.http, "Registration is closed!").await;
             return Ok(())
         }
     }
@@ -263,11 +303,6 @@ async fn unregister(ctx: &Context, msg: &Message, _args: Args) -> CommandResult 
         
     };
 
-    Ok(())
-}
-
-#[command]
-async fn status(_ctx: &Context, _msg: &Message, _args: Args) -> CommandResult {
     Ok(())
 }
 
@@ -305,18 +340,18 @@ async fn setstate(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult
 
      *gamestatewriteguard = match state {
         -2 => {
-                let rows = &arcdb.query("DELETE FROM gamestate",&[]).await.expect("database failure");
+                let _rows = &arcdb.query("DELETE FROM gamestate",&[]).await.expect("database failure");
                 GameState::Closed
         },
         i@ -1 => {
-                let rows = &arcdb.query("DELETE FROM gamestate",&[]).await.expect("database failure");
-                let rows = &arcdb.query("INSERT INTO gamestate (phase) VALUES ($1);",&[&i]).await.expect("database failure");
+                let _rows = &arcdb.query("DELETE FROM gamestate",&[]).await.expect("database failure");
+                let _rows = &arcdb.query("INSERT INTO gamestate (phase) VALUES ($1);",&[&i]).await.expect("database failure");
                 GameState::Finished
         },
         i@ 0 => {
                 
-                let rows = &arcdb.query("DELETE FROM gamestate",&[]).await.expect("database failure");
-                let rows = &arcdb.query("INSERT INTO gamestate (phase) VALUES ($1);",&[&i]).await.expect("database failure");
+                let _rows = &arcdb.query("DELETE FROM gamestate",&[]).await.expect("database failure");
+                let _rows = &arcdb.query("INSERT INTO gamestate (phase) VALUES ($1);",&[&i]).await.expect("database failure");
                 GameState::Registration
             },
         i@ 1..=8 => {
@@ -324,8 +359,8 @@ async fn setstate(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult
                 args.quoted();
                 let deadlinestring = args.single::<String>().unwrap();
                 let deadline : NaiveDateTime = NaiveDateTime::parse_from_str(&deadlinestring,"%Y-%m-%d %H:%M").expect("date parsing failure");
-                let rows = &arcdb.query("DELETE FROM gamestate",&[]).await.expect("database failure");
-                let rows = &arcdb.query("INSERT INTO gamestate (phase,deadline,rate) VALUES ($1,$2,$3);",&[&i,&deadline,&rate]).await.expect("database failure");
+                let _rows = &arcdb.query("DELETE FROM gamestate",&[]).await.expect("database failure");
+                let _rows = &arcdb.query("INSERT INTO gamestate (phase,deadline,rate) VALUES ($1,$2,$3);",&[&i,&deadline,&rate]).await.expect("database failure");
 
                 GameState::Auction{day : i, deadline: deadline, rate: rate}
             },
