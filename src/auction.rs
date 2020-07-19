@@ -84,11 +84,11 @@ pub async fn auction(ctx: &Context) -> () {
             let mut outer = Vec::new();
             let mut bids = Vec::new();
             let priority = i-1;
-            let rows = arcdb.query("SELECT userid,pathname,bid FROM pathbids WHERE priority = &1",&[&priority]).await.expect("error loading all pathbids");
+            let rows = arcdb.query("SELECT userid,pathname,bid FROM pathbids WHERE priority = $1",&[&priority]).await.expect("error loading all pathbids");
             for row in rows {
                 let path : String = row.get(1);
                 bids.push(Bid {
-                        item: format!("{}_{}", path,["PRIMARY","SECONDARY"][priority as usize]),
+                        item: format!("{}_{}", path,["PRIMARY","SECONDARY"][(priority as usize)-1]),
                         user: row.get(0),
                         price:  row.get(2),
                         reserve: 0,
@@ -102,7 +102,7 @@ pub async fn auction(ctx: &Context) -> () {
             let mut outer = Vec::new();
             for j in 1..=12 {
                 let mut bids = Vec::new();
-                let rows = arcdb.query("SELECT perkbids.userid,perkbids.perkname, perkbids.bid, perkbids.reserve FROM perkbids INNER JOIN perks ON (perkbids.perkname = perks.name) WHERE  (perks.day = &1) AND (perks.nr = &2)",&[&i,&j]).await.expect("error loading all perkbids");
+                let rows = arcdb.query("SELECT perkbids.userid,perkbids.perkname, perkbids.bid, perkbids.reserve FROM perkbids INNER JOIN perks ON (perkbids.perkname = perks.name) WHERE  (perks.day = $1) AND (perks.nr = $2)",&[&i,&j]).await.expect("error loading all perkbids");
                 for row in rows {
                     bids.push(Bid {
                         item: row.get(1),
@@ -186,8 +186,8 @@ pub async fn auction(ctx: &Context) -> () {
             wins_this_auction += 1;
             users.get_mut(&winner.user).unwrap().points -= cost;
             info!(" user: {} won bid for {} with {} points", users.get(&winner.user).unwrap().name, winner.item, cost);            
-            arcdb.query("INSERT INTO wins (userid,item,day) VALUES(&1,&2,&3)",&[&winner.user,&winner.item,&day]).await.expect("failed to store winning bid");
-            arcdb.query("UPDATE users SET points = &1 WHERE id = &2;",&[&users.get(&winner.user).unwrap().points,&users.get(&winner.user).unwrap().id]).await.expect("failed to store winner's points");
+            arcdb.query("INSERT INTO wins (userid,item,day,cost) VALUES($1,$2,$3,$4)",&[&winner.user,&winner.item,&day,&cost]).await.expect("failed to store winning bid");
+            arcdb.query("UPDATE users SET points = $1 WHERE id = $2;",&[&users.get(&winner.user).unwrap().points,&users.get(&winner.user).unwrap().id]).await.expect("failed to store winner's points");
             
 
             //remove invalid bids

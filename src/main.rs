@@ -44,11 +44,11 @@ impl EventHandler for Handler {
 
 
 #[group]
-#[commands(help,listwins,register,hello2)]
+#[commands(help,wins,items,register,hello2)]
 struct General;
 
 #[group]
-#[commands(status,bid,unregister)]
+#[commands(status,bids,bid,unregister)]
 struct Auction;
 
 #[group]

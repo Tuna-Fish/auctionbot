@@ -55,7 +55,7 @@ async fn get_player_uid_and_points(arcdb : &Arc<tokio_postgres::Client>, id: &Us
     }
 }
 
-async fn wins(arcdb : &Arc<tokio_postgres::Client>, userid: Option<i64>, day: Option<i16>) -> String {
+async fn get_wins(arcdb : &Arc<tokio_postgres::Client>, userid: Option<i64>, day: Option<i16>) -> String {
     let rows = match (userid, day) {
 (None,None)         => arcdb.query("SELECT users.name,wins.item,wins.day,wins.cost FROM wins INNER JOIN users ON wins.userid = users.id ORDER BY wins.day",&[]).await,
 (None,Some(d))      => arcdb.query("SELECT users.name,wins.item,wins.day,wins.cost FROM wins INNER JOIN users ON wins.userid = users.id WHERE wins.day = $1 ORDER BY wins.day",&[&d]).await,
@@ -78,6 +78,47 @@ async fn wins(arcdb : &Arc<tokio_postgres::Client>, userid: Option<i64>, day: Op
     s
 }
 
+async fn get_bids(arcdb: &Arc<tokio_postgres::Client>, userid: i64, day: i16) -> String {
+    let mut listing = String::from("```cost|reserve|item\n");
+    match day {
+        1 => {
+            let rows = arcdb.query("SELECT racename, bid FROM racebids WHERE userid = $1",&[&userid]).await.expect("dberror");
+            for row in rows {
+                let price : i32 = row.get(1);
+                let item : String = row.get(0);
+                listing.push_str(&format!("{:>4}|{:>7}|{}\n",&price,&0,&item));
+            }
+        },
+        i@2..=3 => {
+            let priority :i16 = i-1;
+            let rows = arcdb.query("SELECT pathname,bid FROM pathbids WHERE userid = $1 AND priority = $2",&[&userid,&priority]).await.expect("dberror");
+            for row in rows {
+                let price : i32 = row.get(1);
+                let pathname : String = row.get(0);
+                if price != 0 {
+                    listing.push_str(&format!("{:>4}|{:>7}|{}_{}\n",&price,&0,&pathname,&["PRIMARY","SECONDARY"][(priority as usize)-1]));
+                }
+            }
+        },
+        i => {
+            let rows = arcdb.query("SELECT perkbids.perkname,perkbids.bid,perkbids.reserve FROM perkbids INNER JOIN perks ON (perkbids.perkname = perks.name) WHERE perks.day = $1 AND perkbids.userid = $2",&[&day,&userid]).await.expect("dberror");
+            for row in rows {
+                let price :i32 = row.get(1);
+                let reserve : i32 = row.get(2);
+                let perkname : String = row.get(0);
+                listing.push_str(&format!("{:>4}|{:>7}|{}\n",&price,&reserve,&perkname));
+            }
+        },
+
+    }
+    listing.push_str("```");
+    listing               
+}
+
+async fn get_items(arcdb: &Arc<tokio_postgres::Client>, userid: i64, day: i16) -> String {
+    String::new()
+}
+
 
 #[command]
 async fn help(_ctx: &Context, _msg: &Message, _args: Args) -> CommandResult {
@@ -85,7 +126,12 @@ async fn help(_ctx: &Context, _msg: &Message, _args: Args) -> CommandResult {
 }
 
 #[command]
-async fn listwins(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
+async fn listitems(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
+    Ok(())
+}
+
+#[command]
+async fn wins(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
     let data = ctx.data.read().await;
     let arcdb = data.get::<DbClientContainer>().expect("expected db client in sharemap");
     let userid = getuid_i64(msg.author.id);
@@ -102,6 +148,26 @@ async fn listwins(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult
     };
 
     let _ = msg.channel_id.say(&ctx.http, &s).await;
+    Ok(())
+}
+#[command]
+async fn bids(ctx: &Context, msg: &Message, mut _args: Args) -> CommandResult {
+    let data = ctx.data.read().await;
+    let arcdb = data.get::<DbClientContainer>().expect("expected db client in sharemap");
+    let userid = getuid_i64(msg.author.id);
+
+    let gamestatearc = data.get::<GameStateContainer>().expect("expected gamestate in sharemap");
+    let gamestatereadguard = (&gamestatearc).read().await;
+    let day = match *gamestatereadguard {
+        GameState::Auction{day, ..} => day,
+        _ => {
+            let _ =msg.channel_id.say(&ctx.http, "Bidding is not open").await;
+            return Ok(())
+        }
+    };
+
+    let bids = get_bids(arcdb, userid, day).await;
+    let _ = msg.channel_id.say(&ctx.http, bids).await;
     Ok(())
 }
 
