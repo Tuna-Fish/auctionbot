@@ -6,7 +6,7 @@ use tokio::sync::Mutex;
 use crate::DbClientContainer;
 use crate::GameStateContainer;
 use crate::GameState;
-use chrono::NaiveDateTime;
+use chrono::{NaiveDateTime,Duration};
 use rand::prelude::*;
 use std::collections::HashMap;
 use std::cmp;
@@ -47,15 +47,15 @@ fn first_char(s : &str) -> char {
     s.chars().next().unwrap()
 }
 
-pub async fn auction(ctx: &Context) -> () {
+pub async fn auction(ctx: &Context, advance: bool) -> Option<NaiveDateTime> {
     let data = ctx.data.read().await;
 
     let gamestatearc = data.get::<GameStateContainer>().unwrap();
-    let gamestatewriteguard = (&gamestatearc).write().await;
+    let mut gamestatewriteguard = (&gamestatearc).write().await;
     let (day, rate) = match *gamestatewriteguard {
         GameState::Auction{day, deadline, rate} => (day, rate),
         _ => { error!("called auction on non-auction day");
-                return;
+                return None;
         }   
     };
 
@@ -102,7 +102,9 @@ pub async fn auction(ctx: &Context) -> () {
             let mut outer = Vec::new();
             for j in 1..=12 {
                 let mut bids = Vec::new();
-                let rows = arcdb.query("SELECT perkbids.userid,perkbids.perkname, perkbids.bid, perkbids.reserve FROM perkbids INNER JOIN perks ON (perkbids.perkname = perks.name) WHERE  (perks.day = $1) AND (perks.nr = $2)",&[&i,&j]).await.expect("error loading all perkbids");
+                let day = i as i16;
+                let nr = j as i16;
+                let rows = arcdb.query("SELECT perkbids.userid,perkbids.perkname, perkbids.bid, perkbids.reserve FROM perkbids INNER JOIN perks ON (perkbids.perkname = perks.name) WHERE  (perks.day = $1) AND (perks.nr = $2)",&[&day,&nr]).await.expect("error loading all perkbids");
                 for row in rows {
                     bids.push(Bid {
                         item: row.get(1),
@@ -168,6 +170,10 @@ pub async fn auction(ctx: &Context) -> () {
             if day > 3 && winner.price < 10 {
                 break;
             }
+            //prices of 0 are dead bids
+            if winner.price == 0 {
+                break;
+            }
             
             //congratulations
             
@@ -218,5 +224,35 @@ pub async fn auction(ctx: &Context) -> () {
             }
         }
     }
+    let mut ret = None;
+    if advance {
+        let (day, deadline, rate) = match *gamestatewriteguard {
+            GameState::Auction{day, deadline, rate} => (day, deadline, rate),
+            _ => { error!("called auction on non-auction day");
+                return None;
+            }      
+        };
+        let newdeadline =  deadline + Duration::minutes(rate as i64);
+        let gamestate = if day == 8 {
+            let _rows = &arcdb.query("DELETE FROM gamestate",&[]).await.expect("database failure");
+            let _rows = &arcdb.query("INSERT INTO gamestate (phase) VALUES ($1);",&[&-1i16]).await.expect("database failure");      
+            GameState::Finished
+        } else {
+            let newday = day+1;
+            let _rows = &arcdb.query("DELETE FROM gamestate",&[]).await.expect("database failure");
+            let _rows = &arcdb.query("INSERT INTO gamestate (phase,deadline,rate) VALUES ($1,$2,$3);",&[&newday,&newdeadline,&rate]).await.expect("database failure");
+
+            GameState::Auction{
+                day: newday,
+                deadline: newdeadline,
+                rate: rate,
+            }
+        };
+        *gamestatewriteguard = gamestate;
+        
+        
+        ret = Some(newdeadline);
+    }
+    ret
 
 }

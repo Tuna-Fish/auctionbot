@@ -1,8 +1,8 @@
-DROP TABLE IF EXISTS perks;
+DROP TABLE IF EXISTS perks CASCADE;
 CREATE TABLE perks (
 	name VARCHAR(30) PRIMARY KEY,
-	day INTEGER,
-	nr INTEGER,
+	day SMALLINT,
+	nr SMALLINT,
 	descr TEXT
 );
 
@@ -45,7 +45,7 @@ INSERT INTO perks (day, nr, name, descr) VALUES
 	(6,7, 'BEEFCAKE_SACREDS','All your sacred troops get +10hp and +4str'),
 	(6,8, 'SACRIFICIAL_GROVE','You get sacrificial grove (20% blood discount) as an additional cap site'),
 	(6,9, 'CAP_ONLY_DEATHREC','All your cap-only units get a death recruit bonus that cuts their cost in half in Death 3 dominion.'),
-	(6,10,'SLAVE_TROOPS','I generate a few slave troops of any race that was not picked. Your normal commanders get taskmaster.'),
+	(6,10,'SLAVE_TROOPS','I generate a few slave troops of any race of your choice that was not picked. Your normal commanders get taskmaster.'),
 	(6,11,'SNIPER_MAGES','Your national mages get +5 prec.'),
 	(6,12,'TURLE_POWER','You get badass heavily armored wingless arbalesters with op stats as national pd and wall defenders. You cannot recruit them. You also get a themed flag.'),
 
@@ -71,7 +71,7 @@ INSERT INTO perks (day, nr, name, descr) VALUES
 	(8,5, 'ELEGISTs','Your weakest priests get 2 points of elegist and your god will not lose paths on death'),
 	(8,6, 'EARTH_SPELLS','You get ulmish antimagic darts, and also sentinel statues, granite guardians, marble oracles and iron angels.'),
 	
-	(8,7, 'SLAVE_MAGES','You get a weak and a medium mage as slaves from any race that was not picked'),
+	(8,7, 'SLAVE_MAGES','You get a weak and a medium mage as slaves from any race of your choice that was not picked'),
 	(8,8, 'DUAL_WIELDING_SACREDS', 'Your sacreds get ambidextrous and two unremarkable short one-handed weapons.'),
 	(8,9, 'AIR_SUMMONS', 'You get Simargls, Condors, Dai tengus and Chaac.'),
 	(8,10,'UNHOLY BUFFS', 'You get the undead holy buff spells.'),
