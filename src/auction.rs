@@ -43,7 +43,7 @@ impl PartialEq for Bid {
     }
 }
 
-fn first_char(s : &str) -> char {
+pub fn first_char(s : &str) -> char {
     s.chars().next().unwrap()
 }
 

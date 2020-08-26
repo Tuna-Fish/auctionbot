@@ -24,9 +24,11 @@ use serenity::{
 use tokio::sync::Mutex;
 use crate::DbClientContainer;
 use crate::GameStateContainer;
+use std::collections::HashSet;
 use crate::GameState;
 use chrono::{NaiveDateTime,Local,Duration};
 use crate::auction::auction;
+use crate::auction::first_char;
 //general
 
 // Discord userids are u64s. Postgres does not natively support that data type. Since we just pass
@@ -196,6 +198,7 @@ async fn help(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
         args.single::<String>().unwrap()
     };
     let response= match &arg1[..] {
+        "minorpaths" => "sets or views your minor path choices, usage:\n minorpaths : shows what you have chosen\n minorpaths <path1> <path2> : selects paths",
         "register" => "adds you to a game, works during registration only",
         "unregister" => "removes you from the game, works during registration only",
         "items" => "lists things available for auction.\nUsage:\n items :lists what items are available today\n items <day> : list things available on a given day\n",
@@ -204,7 +207,7 @@ async fn help(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
         "bid" => "places a bid on an item.\n usage:\n bid <ITEM> <price> <reserve> : places a bid on an item, with a reserve set\n bid <ITEM> <price> : places a bid on an item without reserve",
         "status" => "displays game state and the time until deadline\nusage:\nstatus",
         "users" => "displays all users and their points\nusage:\nusers",
-        _ => "commands:\nitems bids wins bid status users register unregister\ntry help <command>",
+        _ => "commands:\nitems bids wins bid status users register unregister minorpaths\ntry help <command>",
     
     };
     let _ = msg.channel_id.say(&ctx.http, response).await;
@@ -343,6 +346,76 @@ async fn status(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
     let _ =msg.channel_id.say(&ctx.http, s).await;
     Ok(())
 }
+
+#[command]
+async fn minorpaths(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
+    let data = ctx.data.read().await;
+
+    let gamestatearc = data.get::<GameStateContainer>().expect("expected gamestate in sharemap");
+    let gamestatereadguard = (&gamestatearc).read().await;
+    let day = match *gamestatereadguard {
+        GameState::Auction{day, ..} => day,
+        _ => {
+            let _ =msg.channel_id.say(&ctx.http, "Bidding is not open").await;
+            return Ok(())
+        }
+    };
+
+    let arcdb = data.get::<DbClientContainer>().expect("expected db client in sharemap");
+
+    let (playerid, points) = match get_player_uid_and_points(&arcdb,&msg.author.id).await {
+            Some((uid,points)) => (uid,points),
+            None => {
+                let _ = msg.channel_id.say(&ctx.http, "You are not registered to bid").await;
+                return Ok(());
+            }
+    };
+    
+    if !( args.len() == 0 || args.len() == 2) {
+            let _ = msg.channel_id.say(&ctx.http, "You must either select two minor paths, or use without arguments to show paths you chose.").await;
+            return Ok(());
+    }
+
+    if args.len() == 0 {
+        match arcdb.query_opt("SELECT path3,path4 FROM minorpaths WHERE userid = $1",&[&playerid]).await.expect("dberror") {
+            None => {
+                let _ = msg.channel_id.say(&ctx.http, "you have not yet selected minor paths").await;
+                return Ok(());
+            },
+            Some(row) => {
+                let minor3: String = row.get(0);
+                let minor4: String = row.get(1);
+                let _ = msg.channel_id.say(&ctx.http, format!("Your minor paths are {} and {}", &minor3, &minor4)).await;
+                return Ok(());
+            }
+        }
+    }
+    let arg1: String = args.single::<String>().unwrap().to_ascii_uppercase();
+    let arg2: String = args.single::<String>().unwrap().to_ascii_uppercase();
+    let paths = "AEFWSNDB";
+
+
+    if arg1.len() != 1 ||  !paths.contains(&arg1) {
+        let _ = msg.channel_id.say(&ctx.http, "did not recognize first argument").await;
+        return Ok(());
+    }
+
+    if arg2.len() != 1 || !paths.contains(&arg2) {
+        let _ = msg.channel_id.say(&ctx.http, "did not recognize second argument").await;
+        return Ok(());
+    }
+   
+    arcdb.query_opt(
+        "INSERT INTO minorpaths (userid,path3,path4) VALUES ($1,$2,$3) ON CONFLICT (userid) DO UPDATE SET path3=EXCLUDED.path3, path4 = EXCLUDED.path4",
+        &[&playerid,&arg1,&arg2]
+    ).await.expect("failed to insert bid");
+    
+    let _ = msg.channel_id.say(&ctx.http, "successfully updated minor paths").await;
+    return Ok(());
+}
+
+
+
 #[command]
 async fn bid(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
     let data = ctx.data.read().await;

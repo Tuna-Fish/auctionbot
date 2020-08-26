@@ -136,7 +136,7 @@ impl EventHandler for Handler {
 struct General;
 
 #[group]
-#[commands(status,bids,bid,unregister)]
+#[commands(status,bids,bid,unregister,minorpaths)]
 struct Auction;
 
 #[group]
