@@ -8,21 +8,22 @@ edition = "2018"
 
 
 [dependencies]
-log = "0.4.11"
+log = "0.4.13"
 chrono = "0.4"
-env_logger = "0.7.1"
-rand = "0.7"
+env_logger = "0.8.2"
+rand = "0.8.2"
 
 [dependencies.tokio-postgres]
-version = "0.5"
+version = "0.7"
 features = ["with-chrono-0_4"]
 
 [dependencies.tokio]
-version = "0.2"
-features = ["macros"] 
+version = "1"
+features = ["full"] 
 
 [dependencies.serenity]
-git = "https://github.com/acdenisSK/serenity"
-branch = "await_next"
-default-features = false
+#git = "https://github.com/acdenisSK/serenity"
+#branch = "await_next"
+#default-features = false
+version = "0.10.2"
 features = ["client","utils", "gateway", "rustls_backend", "model","framework", "standard_framework"]

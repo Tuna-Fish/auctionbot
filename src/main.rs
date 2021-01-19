@@ -12,7 +12,7 @@ use serenity::{
     client::bridge::gateway::GatewayIntents,
     
     framework::standard::{
-        Args, CheckResult, CommandOptions, CommandResult, CommandGroup,
+        Args, CommandOptions, CommandResult, CommandGroup,
         DispatchError, HelpOptions, help_commands, StandardFramework,
         macros::{command, group, help, check, hook},
     },
@@ -102,7 +102,7 @@ async fn ticker(ctx: Context)
     debug!("ticker called");
     tokio::spawn(async move {
         loop {
-            tokio::time::delay_for(Duration::from_secs(120)).await;
+            tokio::time::sleep(Duration::from_secs(120)).await;
             tick(ctx.clone()).await;
         }
     }); //tokio::spawn returns a joinhandle, which is detached on drop
@@ -221,9 +221,9 @@ async fn main() {
         .group(&ADMIN_GROUP)
         .group(&AUCTION_GROUP);
 
-    let mut client = Client::new(config::TOKEN)
+    let mut client = Client::builder(config::TOKEN)
         .event_handler(Handler)
-        .add_intent(GatewayIntents::DIRECT_MESSAGES)
+        .intents(GatewayIntents::DIRECT_MESSAGES | GatewayIntents::GUILD_MESSAGES)
         .framework(framework)
         .await
         .expect("couldn't create the new client!");

@@ -1,6 +1,6 @@
 
 use log::{debug, error, info};
-use std::sync::Arc;
+use std::sync::{Arc};
 use tokio_postgres::{NoTls, Error};
 use serenity::{
     prelude::*,
@@ -8,7 +8,7 @@ use serenity::{
     client::bridge::gateway::GatewayIntents,
     
     framework::standard::{
-        Args, CheckResult, CommandOptions, CommandResult, CommandGroup,
+        Args, CommandOptions, CommandResult, CommandGroup,
         DispatchError, HelpOptions, help_commands, StandardFramework,
         macros::{command, group, help, check, hook},
     },
@@ -21,7 +21,6 @@ use serenity::{
         permissions::Permissions
     },
 };
-use tokio::sync::Mutex;
 use crate::DbClientContainer;
 use crate::GameStateContainer;
 use std::collections::HashSet;

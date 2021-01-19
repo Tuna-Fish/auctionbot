@@ -2,7 +2,6 @@ use std::cmp::Ordering;
 use log::{debug, error, info};
 use std::sync::Arc;
 use serenity::prelude::*;
-use tokio::sync::Mutex;
 use crate::DbClientContainer;
 use crate::GameStateContainer;
 use crate::GameState;
