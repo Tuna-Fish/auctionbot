@@ -79,7 +79,7 @@ pub async fn auction(ctx: &Context, advance: bool) -> Option<NaiveDateTime> {
             }
             outer.push(bids);
             outer
-        },
+        }, /*
         i @2..=3 => {
             let mut outer = Vec::new();
             let mut bids = Vec::new();
@@ -97,8 +97,8 @@ pub async fn auction(ctx: &Context, advance: bool) -> Option<NaiveDateTime> {
             }
             outer.push(bids);
             outer
-        },
-        i @4..=8 => {
+        },*/
+        i @2..=9 => {
             let mut outer = Vec::new();
             for j in 1..=12 {
                 let mut bids = Vec::new();
@@ -167,7 +167,7 @@ pub async fn auction(ctx: &Context, advance: bool) -> Option<NaiveDateTime> {
             let winner = bids.pop().expect("no highest bid in a list with >0 entries");
             
             //minimum bid of 10 for perk auctions
-            if day > 3 && winner.price < 10 {
+            if day > 1 && winner.price < 10 {
                 break;
             }
             //prices of 0 are dead bids
@@ -186,7 +186,7 @@ pub async fn auction(ctx: &Context, advance: bool) -> Option<NaiveDateTime> {
                         break;
                     }
             }
-            if day > 3 && cost < 10 {
+            if day > 1 && cost < 10 {
                 cost = 10;
             }
             wins_this_auction += 1;
@@ -203,9 +203,10 @@ pub async fn auction(ctx: &Context, advance: bool) -> Option<NaiveDateTime> {
             //second, remove bids on items that are no longer available
             
             match (day, wins_this_auction) {
-                //for days 1, 4..=8, remove all bids on the same thing
+                //for race and perk days, remove all bids on the same thing
                 (1,_) => bids.retain(|bid|bid.item != winner.item),
-                (4..=8,_) => bids.retain(|bid|bid.item != winner.item),
+                (2..=9,_) => bids.retain(|bid|bid.item != winner.item),
+                /*
                 // for primary paths, first 4 winners get uniques
                 (2, 1..=4 ) => {
                     bids.retain(|bid|bid.item != winner.item);
@@ -219,7 +220,7 @@ pub async fn auction(ctx: &Context, advance: bool) -> Option<NaiveDateTime> {
                     if picks_left == 0 {    
                         bids.retain(|bid|bid.item != winner.item);
                     }
-                },
+                },*/
                 _ => unreachable!()
             }
         }
@@ -233,7 +234,7 @@ pub async fn auction(ctx: &Context, advance: bool) -> Option<NaiveDateTime> {
             }      
         };
         let newdeadline =  deadline + Duration::minutes(rate as i64);
-        let gamestate = if day == 8 {
+        let gamestate = if day == 9 {
             let _rows = &arcdb.query("DELETE FROM gamestate",&[]).await.expect("database failure");
             let _rows = &arcdb.query("INSERT INTO gamestate (phase) VALUES ($1);",&[&-1i16]).await.expect("database failure");      
             GameState::Finished

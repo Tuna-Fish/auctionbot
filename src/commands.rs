@@ -93,7 +93,7 @@ async fn get_bids(arcdb: &Arc<tokio_postgres::Client>, userid: i64, day: i16) ->
                 }
             }
         },
-        i@2..=3 => {
+/*        i@2..=3 => {
             let priority :i16 = i-1;
             let rows = arcdb.query("SELECT pathname,bid FROM pathbids WHERE userid = $1 AND priority = $2 ORDER BY bid DESC",&[&userid,&priority]).await.expect("dberror");
             for row in rows {
@@ -103,7 +103,7 @@ async fn get_bids(arcdb: &Arc<tokio_postgres::Client>, userid: i64, day: i16) ->
                     listing.push_str(&format!("{:>4}|{:>7}|{}_{}\n",&price,&0,&pathname,&["PRIMARY","SECONDARY"][(priority as usize)-1]));
                 }
             }
-        },
+        },*/
         i => {
             let rows = arcdb.query("SELECT perkbids.perkname,perkbids.bid,perkbids.reserve FROM perkbids INNER JOIN perks ON (perkbids.perkname = perks.name) WHERE perks.day = $1 AND perkbids.userid = $2 ORDER BY perks.nr",&[&day,&userid]).await.expect("dberror");
             for row in rows {
@@ -142,7 +142,7 @@ async fn get_items(arcdb: &Arc<tokio_postgres::Client>, day: Option<i16>) -> Str
         listing.push_str("```\n\n");
 
     }
-    //paths
+/*    //paths
     if day == Some(2) || day == Some(3) || day == None {
         listing.push_str("```name|longname\n");
         let rows = arcdb.query("SELECT name,longname FROM paths",&[]).await.expect("dberror");
@@ -152,7 +152,7 @@ async fn get_items(arcdb: &Arc<tokio_postgres::Client>, day: Option<i16>) -> Str
             listing.push_str(&format!("{:>3} |{}\n",&name,&descr));
         }
         listing.push_str("```\n\n");
-    }
+    }*/
     //perks if you ask for all of them
     if day == None {
         listing.push_str("```day|             name             |longname\n");
@@ -167,7 +167,7 @@ async fn get_items(arcdb: &Arc<tokio_postgres::Client>, day: Option<i16>) -> Str
     }
 
     let d = day.unwrap_or(0);
-    if d > 3 && d<9 { 
+    if d > 1 && d<10 { 
         listing.push_str("```day|             name             |longname\n");
         let rows = arcdb.query("SELECT day,name,descr FROM perks WHERE day = $1 ORDER BY (day,nr)",&[&d]).await.expect("dberror");
         for row in rows {
@@ -497,7 +497,7 @@ async fn bid(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
                     return Ok(());
                 }
             }
-        },
+        },/*
         i @ 2..=3 => { //magic path day 
             let pathopt = arcdb.query_opt("SELECT name FROM paths WHERE name = $1",&[&item]).await.expect("db failure");
             match pathopt { 
@@ -523,8 +523,8 @@ async fn bid(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
                     return Ok(());
                 }
             }
-        },
-        i @4..=8 => { //perk day
+        },*/
+        i @ 2..=9 => { //perk day
             let perkopt = arcdb.query_opt("SELECT day FROM perks WHERE (name = $1)",&[&item]).await.expect("db failure");
             if price < 10 && price != 0 {
                 let _ = msg.channel_id.say(&ctx.http, "The mimimum bid on Perk days is 10.").await;
@@ -687,7 +687,7 @@ async fn setstate(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult
                 let _rows = &arcdb.query("INSERT INTO gamestate (phase) VALUES ($1);",&[&i]).await.expect("database failure");
                 GameState::Registration
             },
-        i@ 1..=8 => {
+        i@ 1..=9 => {
                 let rate : i32 = args.single::<i32>().unwrap(); 
                 args.quoted();
                 let deadlinestring = args.single::<String>().unwrap();
