@@ -1,33 +1,25 @@
 
-use log::{debug, error, info};
+use log::{info};
 use std::sync::{Arc};
-use tokio_postgres::{NoTls, Error};
 use serenity::{
     prelude::*,
-    async_trait,
-    client::bridge::gateway::GatewayIntents,
-    
     framework::standard::{
-        Args, CommandOptions, CommandResult, CommandGroup,
-        DispatchError, HelpOptions, help_commands, StandardFramework,
-        macros::{command, group, help, check, hook},
+        Args, CommandResult,
+        macros::{command},
     },
-    http::Http,
     
     model::{
-        channel::{Message, Channel},
-        gateway::Ready,
+        channel::{Message},
         id::UserId,
-        permissions::Permissions
     },
 };
 use crate::DbClientContainer;
 use crate::GameStateContainer;
-use std::collections::HashSet;
-use crate::GameState;
+use crate::gamestate::GameState;
+use crate::gamestate::get_auctiontype_for_day;
+use crate::gamestate::AuctionType;
 use chrono::{NaiveDateTime,Local,Duration};
 use crate::auction::auction;
-use crate::auction::first_char;
 //general
 
 // Discord userids are u64s. Postgres does not natively support that data type. Since we just pass
@@ -327,6 +319,7 @@ pub fn pretty_print_deadline(deadline: NaiveDateTime) -> String {
 }
 #[command]
 async fn status(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
+	dbg!("in status");
     let data = ctx.data.read().await;
     let arcdb = data.get::<DbClientContainer>().expect("expected db client in sharemap");
    
@@ -335,7 +328,7 @@ async fn status(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
     let s : String = match *gamestatereadguard {
         GameState::Closed => "game is closed".to_string(),
         GameState::Registration => "game is accepting registrations".to_string(),
-        GameState::Auction{day,deadline,rate} => {
+        GameState::Auction{day,auctiontype,deadline,rate} => {
             let time_remaining = pretty_print_deadline(deadline);
             format!("Auctions for day {} are open, and {}",day,time_remaining)
         },
@@ -421,8 +414,8 @@ async fn bid(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
 
     let gamestatearc = data.get::<GameStateContainer>().expect("expected gamestate in sharemap");
     let gamestatereadguard = (&gamestatearc).read().await;
-    let day = match *gamestatereadguard {
-        GameState::Auction{day, ..} => day,
+    let (day, auctiontype) = match *gamestatereadguard {
+        GameState::Auction{day, auctiontype, ..} => (day, auctiontype),
         _ => {
             let _ =msg.channel_id.say(&ctx.http, "Bidding is not open").await;
             return Ok(())
@@ -480,9 +473,9 @@ async fn bid(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
         let _ = msg.channel_id.say(&ctx.http, "the sum of your bid and reserve may not be more than your remaining points").await;
         return Ok(())
     }
-
-    match day {
-        1 => { // race bid day
+	
+    match auctiontype {
+        AuctionType::Race => { // race bid day
             let raceopt = arcdb.query_opt("SELECT name FROM races WHERE name = $1",&[&item]).await.expect("db failure");
             match raceopt {
                 Some(_) => {
@@ -496,12 +489,12 @@ async fn bid(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
                     return Ok(());
                 }
             }
-        },/*
-        i @ 2..=3 => { //magic path day 
+        }, /*
+        AuctionType::PrimaryPath | AuctionType::SecondaryPath => { //magic path day 
             let pathopt = arcdb.query_opt("SELECT name FROM paths WHERE name = $1",&[&item]).await.expect("db failure");
             match pathopt { 
                 Some(_) => {
-                    if (i == 3) {
+                    if (day == 3) {
                         let primarystring = format!("{}_PRIMARY",&item);
                         match arcdb.query_opt("SELECT cost FROM wins WHERE userid = $1 AND item = $2",&[&playerid,&primarystring]).await.expect("db failure") {
                             None => (),
@@ -522,8 +515,8 @@ async fn bid(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
                     return Ok(());
                 }
             }
-        },*/
-        i @ 2..=9 => { //perk day
+        }, */
+        AuctionType::Perk(..) => { //perk day
             let perkopt = arcdb.query_opt("SELECT day FROM perks WHERE (name = $1)",&[&item]).await.expect("db failure");
             if price < 10 && price != 0 {
                 let _ = msg.channel_id.say(&ctx.http, "The mimimum bid on Perk days is 10.").await;
@@ -532,7 +525,7 @@ async fn bid(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
             match perkopt {
                 Some(row) => {
                     let pday : i16 = row.get(0);
-                    if pday  != i {
+                    if pday  != day {
                         let _ = msg.channel_id.say(&ctx.http, "The perk you specified is not up for auction today").await;
                         return Ok(());
                     }
@@ -546,8 +539,8 @@ async fn bid(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
                     return Ok(());
                 }
             }
-        }
-        _ => unreachable!()
+        },
+		_ => { unreachable!() }
     }
     if price == 0 { 
         let _ = msg.channel_id.say(&ctx.http, "successfully removed bid").await;
@@ -670,6 +663,8 @@ async fn setstate(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult
 
     let state = args.single::<i16>().unwrap();
 
+	let maybeauctiontype = get_auctiontype_for_day(&arcdb,state).await;
+
      *gamestatewriteguard = match state {
         -2 => {
                 let _rows = &arcdb.query("DELETE FROM gamestate",&[]).await.expect("database failure");
@@ -686,7 +681,8 @@ async fn setstate(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult
                 let _rows = &arcdb.query("INSERT INTO gamestate (phase) VALUES ($1);",&[&i]).await.expect("database failure");
                 GameState::Registration
             },
-        i@ 1..=9 => {
+        i => {
+				let auctiontype = maybeauctiontype.expect("set day to one without an auction");
                 let rate : i32 = args.single::<i32>().unwrap(); 
                 args.quoted();
                 let deadlinestring = args.single::<String>().unwrap();
@@ -694,9 +690,8 @@ async fn setstate(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult
                 let _rows = &arcdb.query("DELETE FROM gamestate",&[]).await.expect("database failure");
                 let _rows = &arcdb.query("INSERT INTO gamestate (phase,deadline,rate) VALUES ($1,$2,$3);",&[&i,&deadline,&rate]).await.expect("database failure");
 
-                GameState::Auction{day : i, deadline: deadline, rate: rate}
+                GameState::Auction{day : i, auctiontype, deadline, rate}
             },
-        _ => { unreachable!(); }
     };
     Ok(())
 }
@@ -712,7 +707,7 @@ async fn getstate(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
         GameState::Registration =>  msg.channel_id.say(&ctx.http, "Game is in registration!").await,
         GameState::Closed => msg.channel_id.say(&ctx.http, "Game is closed!").await,
         GameState::Finished => msg.channel_id.say(&ctx.http, "Game is finished!").await,
-        GameState::Auction {day,deadline,rate} => msg.channel_id.say(&ctx.http, format!("Auctions are open. It is day: {}, current deadline is {}, and rate is {}",day,deadline,rate)).await
+        GameState::Auction {day,auctiontype,deadline,rate} => msg.channel_id.say(&ctx.http, format!("Auctions are open. It is day: {}, current deadline is {}, and rate is {}",day,deadline,rate)).await
     };
     
     Ok(())

@@ -1,11 +1,10 @@
 use std::cmp::Ordering;
-use log::{debug, error, info};
-use std::sync::Arc;
+use log::{error, info};
 use serenity::prelude::*;
 use crate::DbClientContainer;
 use crate::GameStateContainer;
-use crate::GameState;
-use chrono::{NaiveDateTime,Duration};
+use crate::gamestate::GameState;
+use crate::gamestate::AuctionType;
 use rand::prelude::*;
 use std::collections::HashMap;
 use std::cmp;
@@ -46,23 +45,23 @@ pub fn first_char(s : &str) -> char {
     s.chars().next().unwrap()
 }
 
-pub async fn auction(ctx: &Context, advance: bool) -> Option<NaiveDateTime> {
+pub async fn auction(ctx: &Context, advance: bool) {
     let data = ctx.data.read().await;
 
     let gamestatearc = data.get::<GameStateContainer>().unwrap();
     let mut gamestatewriteguard = (&gamestatearc).write().await;
-    let (day, rate) = match *gamestatewriteguard {
-        GameState::Auction{day, deadline, rate} => (day, rate),
+    let (day, rate, auctiontype) = match *gamestatewriteguard {
+        GameState::Auction{day, auctiontype, deadline, rate} => (day, rate, auctiontype),
         _ => { error!("called auction on non-auction day");
-                return None;
+                return;
         }   
     };
 
     let arcdb = data.get::<DbClientContainer>().expect("where is my db?");
     
-    let mut outer : Vec<Vec<Bid>> = match day {
-        1 => {
-            let mut outer= Vec::new();
+    let mut outer : Vec<Vec<Bid>> = match auctiontype {
+        AuctionType::Race => {
+            let mut outer = Vec::new();
             let mut bids = Vec::new();
             let rows = arcdb.query("SELECT userid,racename,bid FROM racebids",&[]).await.expect("error loading all racebids");
             for row in rows {
@@ -97,11 +96,10 @@ pub async fn auction(ctx: &Context, advance: bool) -> Option<NaiveDateTime> {
             outer.push(bids);
             outer
         },*/
-        i @2..=9 => {
+        AuctionType::Perk(nrperks) => {
             let mut outer = Vec::new();
-            for j in 1..=12 {
+            for j in 1..=nrperks {
                 let mut bids = Vec::new();
-                let day = i as i16;
                 let nr = j as i16;
                 let rows = arcdb.query("SELECT perkbids.userid,perkbids.perkname, perkbids.bid, perkbids.reserve FROM perkbids INNER JOIN perks ON (perkbids.perkname = perks.name) WHERE  (perks.day = $1) AND (perks.nr = $2)",&[&day,&nr]).await.expect("error loading all perkbids");
                 for row in rows {
@@ -166,8 +164,10 @@ pub async fn auction(ctx: &Context, advance: bool) -> Option<NaiveDateTime> {
             let winner = bids.pop().expect("no highest bid in a list with >0 entries");
             
             //minimum bid of 10 for perk auctions
-            if day > 1 && winner.price < 10 {
-                break;
+            if let AuctionType::Perk(..) = auctiontype {
+				if winner.price < 10 {
+					break;
+				}
             }
             //prices of 0 are dead bids
             if winner.price == 0 {
@@ -185,8 +185,10 @@ pub async fn auction(ctx: &Context, advance: bool) -> Option<NaiveDateTime> {
                         break;
                     }
             }
-            if day > 1 && cost < 10 {
-                cost = 10;
+            if let AuctionType::Perk(..) = auctiontype {
+				if cost < 10 {
+					cost = 10;
+				}
             }
             wins_this_auction += 1;
             users.get_mut(&winner.user).unwrap().points -= cost;
@@ -201,10 +203,10 @@ pub async fn auction(ctx: &Context, advance: bool) -> Option<NaiveDateTime> {
 
             //second, remove bids on items that are no longer available
             
-            match (day, wins_this_auction) {
+            match (auctiontype, wins_this_auction) {
                 //for race and perk days, remove all bids on the same thing
-                (1,_) => bids.retain(|bid|bid.item != winner.item),
-                (2..=9,_) => bids.retain(|bid|bid.item != winner.item),
+                (AuctionType::Race,_) => bids.retain(|bid|bid.item != winner.item),
+                (AuctionType::Perk(..),_) => bids.retain(|bid|bid.item != winner.item),
                 /*
                 // for primary paths, first 4 winners get uniques
                 (2, 1..=4 ) => {
@@ -224,35 +226,8 @@ pub async fn auction(ctx: &Context, advance: bool) -> Option<NaiveDateTime> {
             }
         }
     }
-    let mut ret = None;
     if advance {
-        let (day, deadline, rate) = match *gamestatewriteguard {
-            GameState::Auction{day, deadline, rate} => (day, deadline, rate),
-            _ => { error!("called auction on non-auction day");
-                return None;
-            }      
-        };
-        let newdeadline =  deadline + Duration::minutes(rate as i64);
-        let gamestate = if day == 9 {
-            let _rows = &arcdb.query("DELETE FROM gamestate",&[]).await.expect("database failure");
-            let _rows = &arcdb.query("INSERT INTO gamestate (phase) VALUES ($1);",&[&-1i16]).await.expect("database failure");      
-            GameState::Finished
-        } else {
-            let newday = day+1;
-            let _rows = &arcdb.query("DELETE FROM gamestate",&[]).await.expect("database failure");
-            let _rows = &arcdb.query("INSERT INTO gamestate (phase,deadline,rate) VALUES ($1,$2,$3);",&[&newday,&newdeadline,&rate]).await.expect("database failure");
-
-            GameState::Auction{
-                day: newday,
-                deadline: newdeadline,
-                rate: rate,
-            }
-        };
-        *gamestatewriteguard = gamestate;
-        
-        
-        ret = Some(newdeadline);
+        let gamestate =  *gamestatewriteguard;
+        *gamestatewriteguard = gamestate.advance(&arcdb).await;
     }
-    ret
-
 }

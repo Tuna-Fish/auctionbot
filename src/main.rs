@@ -1,38 +1,44 @@
-mod config;
+#![allow(dead_code)]
+#![allow(unused_variables)]
 
 mod commands;
 mod auction;
+mod gamestate;
 
-use log::{debug, error, info};
+use log::{debug, info};
 use std::sync::Arc;
-use tokio_postgres::{NoTls, Error};
+use tokio_postgres::{NoTls};
 use serenity::{
     prelude::*,
     async_trait,
     client::bridge::gateway::GatewayIntents,
     
     framework::standard::{
-        Args, CommandOptions, CommandResult, CommandGroup,
-        DispatchError, HelpOptions, help_commands, StandardFramework,
-        macros::{command, group, help, check, hook},
+        StandardFramework,
+        macros::{group, hook},
     },
-    http::Http,
     
     model::{
-        channel::{Message, Channel},
+        channel::{Message},
         gateway::Ready,
-        id::UserId,
-        id::GuildId,
         id::ChannelId,
-        permissions::Permissions
     },
 };
 use chrono::{NaiveDateTime,Local};
 use tokio::sync::RwLock;
-use tokio::sync::Mutex;
 use commands::*;
 use tokio::time::Duration;
 use crate::auction::auction;
+use gamestate::GameState;
+use envconfig::Envconfig;
+
+#[derive(Envconfig)]
+pub struct Config {
+	#[envconfig(from = "DISCORD_TOKEN")]
+	pub token: String,
+	#[envconfig(from = "DATABASE_USER")]
+	pub dbuser: String
+}
 
 fn uid_to_u64(id : i64) -> u64{
     id as u64
@@ -75,25 +81,19 @@ async fn tick(ctx : Context){
     let data = ctx.data.read().await;
     debug!("tick");
     let now = Local::now().naive_local();
-    let mut oldday = 0;
     let shouldauction = {
         let gamestatearc = data.get::<GameStateContainer>().expect("expected gamestate in sharemap");
         let gamestatereadguard = (&gamestatearc).read().await;
         match *gamestatereadguard {
-            GameState::Auction{day,deadline,rate} => {
-                oldday = day;
-                if deadline < now {
-                    true
-                } else {
-                    false
-                }
-            },
+            GameState::Auction{day,auctiontype,deadline,rate} => {
+                deadline < now
+				},
             _ => false
         }
     };
     if shouldauction {
-        let deadline = auction(&ctx,true).await.unwrap();
-        //spam(&ctx,oldday+1, deadline).await;
+        auction(&ctx,true).await;
+        //spam(&ctx,oldday+1,).await;
     }
 
 }
@@ -143,14 +143,6 @@ struct Auction;
 #[commands(runauction,setstate,getstate,kick)]
 struct Admin;
 
-#[derive(Copy,Clone)]
-enum GameState {
-    Closed,
-    Registration,
-    Auction{day: i16, deadline: NaiveDateTime, rate: i32},
-    Finished,
-}
-
 struct GameStateContainer;
 
 impl TypeMapKey for GameStateContainer {
@@ -176,7 +168,13 @@ async fn main() {
     
     env_logger::init();
 
-    let (dbclient, connection) = tokio_postgres::connect("host='/var/run/postgresql/' user=auctionbot", NoTls).await.unwrap();
+	let config = Config::init_from_env().unwrap();
+
+	let dbstring = format!("host='/var/run/postgresql/' user={}",config.dbuser);
+
+    dbg!(&dbstring);
+
+    let (dbclient, connection) = tokio_postgres::connect(&dbstring, NoTls).await.unwrap();
     tokio::spawn(async move {
         if let Err(e) = connection.await {
             eprintln!("connection error: {}", e);
@@ -186,28 +184,7 @@ async fn main() {
 
 
 
-    let gamestate = {
-        
-        let mayberow = &arcdb.query_opt("SELECT phase,deadline,rate FROM gamestate;",&[]).await.expect("database failure fetching gamestate");
-        
-        match mayberow {
-            None => GameState::Closed,
-            Some(row) => {
-                let state : i16 = row.get(0);
-                match state {
-                    0 => GameState::Registration,
-                    -1 => GameState::Finished,
-                    i => {
-                        let deadline : NaiveDateTime = row.get(1);
-                        let rate : i32 = row.get(2);
-                        GameState::Auction {
-                            day : i, deadline, rate }
-                    }
-                }
-            }
-        }
-    };
-
+    let gamestate = GameState::fromdb(&arcdb).await;
     let rwlarcstate = Arc::new(RwLock::new(gamestate.clone()));
     
     let framework = StandardFramework::new()
@@ -221,9 +198,10 @@ async fn main() {
         .group(&ADMIN_GROUP)
         .group(&AUCTION_GROUP);
 
-    let mut client = Client::builder(config::TOKEN)
+
+    let mut client = Client::builder(config.token)
         .event_handler(Handler)
-        .intents(GatewayIntents::DIRECT_MESSAGES | GatewayIntents::GUILD_MESSAGES)
+        .intents(GatewayIntents::DIRECT_MESSAGES )
         .framework(framework)
         .await
         .expect("couldn't create the new client!");
