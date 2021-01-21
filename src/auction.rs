@@ -45,7 +45,7 @@ pub fn first_char(s : &str) -> char {
     s.chars().next().unwrap()
 }
 
-pub async fn auction(ctx: &Context, advance: bool) {
+pub async fn auction(ctx: &Context, advance: bool) -> Option<GameState> {
     let data = ctx.data.read().await;
 
     let gamestatearc = data.get::<GameStateContainer>().unwrap();
@@ -53,7 +53,7 @@ pub async fn auction(ctx: &Context, advance: bool) {
     let (day, rate, auctiontype) = match *gamestatewriteguard {
         GameState::Auction{day, auctiontype, deadline, rate} => (day, rate, auctiontype),
         _ => { error!("called auction on non-auction day");
-                return;
+                return None;
         }   
     };
 
@@ -226,8 +226,12 @@ pub async fn auction(ctx: &Context, advance: bool) {
             }
         }
     }
-    if advance {
+	
+    return if advance {
         let gamestate =  *gamestatewriteguard;
-        *gamestatewriteguard = gamestate.advance(&arcdb).await;
-    }
+        let newgamestate = gamestate.advance(&arcdb).await;
+		*gamestatewriteguard = newgamestate;
+		Some(newgamestate)
+    } else { None };
+	
 }

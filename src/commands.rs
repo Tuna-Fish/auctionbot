@@ -10,6 +10,7 @@ use serenity::{
     
     model::{
         channel::{Message},
+		id::ChannelId,
         id::UserId,
     },
 };
@@ -122,8 +123,9 @@ async fn get_items(arcdb: &Arc<tokio_postgres::Client>, day: Option<i16>) -> Str
     listing.reserve(2000);
     }
     //race items
-    if day == Some(1) || day == None {
-        listing.push_str("```          name          | description \n");
+    if day == Some(1) {
+        /*
+		listing.push_str("```          name          | description \n");
         let rows = arcdb.query("SELECT name,descr FROM races",&[]).await.expect("dberror");
         for row in rows {
             let name : String = row.get(0);
@@ -131,7 +133,8 @@ async fn get_items(arcdb: &Arc<tokio_postgres::Client>, day: Option<i16>) -> Str
             listing.push_str(&format!("{:>12}|{}\n",&name,&descr));
         }
         listing.push_str("```\n\n");
-
+		*/
+		listing.push_str("https://rentry.co/natgen2nations\n");
     }
 /*    //paths
     if day == Some(2) || day == Some(3) || day == None {
@@ -146,7 +149,7 @@ async fn get_items(arcdb: &Arc<tokio_postgres::Client>, day: Option<i16>) -> Str
     }*/
     //perks if you ask for all of them
     if day == None {
-        listing.push_str("```day|             name             |longname\n");
+        /*listing.push_str("```day|             name             |longname\n");
         let rows = arcdb.query("SELECT day,name,descr FROM perks ORDER BY (day,nr)",&[]).await.expect("dberror");
         for row in rows {
             let name : String = row.get(1);
@@ -155,10 +158,13 @@ async fn get_items(arcdb: &Arc<tokio_postgres::Client>, day: Option<i16>) -> Str
             listing.push_str(&format!("{:>3}|{:>30}|{}\n",&day,&name,&descr));
         }
         listing.push_str("```\n\n");
+		*/
+		listing.push_str("https://rentry.co/natgenauction2perksbyday");
     }
 
     let d = day.unwrap_or(0);
-    if d > 1 && d<10 { 
+    if d > 1 {
+		/*
         listing.push_str("```day|             name             |longname\n");
         let rows = arcdb.query("SELECT day,name,descr FROM perks WHERE day = $1 ORDER BY (day,nr)",&[&d]).await.expect("dberror");
         for row in rows {
@@ -178,6 +184,9 @@ async fn get_items(arcdb: &Arc<tokio_postgres::Client>, day: Option<i16>) -> Str
             listing.push_str(&format!("{:>3}|{:>30}|{}\n",&d,&name,&descr));
         }
         listing.push_str("```\n\n");
+		*/
+		let s = format!("https://rentry.co/natgenauction2perksbyday#day-{}", &d);
+		listing.push_str(&s);
     }
     listing
 }
@@ -224,7 +233,7 @@ async fn items(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
         0 => get_items(&arcdb, day).await,
         1 => match &args.single::<String>().unwrap()[..] {
             "help" => "usage:\n to list items available today: items\n to list items on a given day: items <day>\n".to_string(),
-            //"all" => get_items(&arcdb, None).await,
+            "all" => get_items(&arcdb, None).await,
             arg  => if let Ok(i) = arg.parse::<i16>() {
                 get_items(&arcdb, Some(i)).await
             } else {"unrecognized parameter".to_string()},
@@ -232,7 +241,7 @@ async fn items(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
         _ => "too many parameters".to_string()
     };
 
-    let _ = msg.channel_id.say(&ctx.http, &s).await;
+    let _x = msg.channel_id.say(&ctx.http, &s).await;
     Ok(())
 }
 
@@ -646,8 +655,6 @@ async fn kick(_ctx: &Context, _msg: &Message, _args: Args) -> CommandResult {
 
 #[command]
 async fn setstate(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
-    info!("{:?}",&args);
-    
     let data = ctx.data.read().await;
 
     let arcdb = data.get::<DbClientContainer>().expect("expected db client in sharemap");
@@ -693,6 +700,7 @@ async fn setstate(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult
                 GameState::Auction{day : i, auctiontype, deadline, rate}
             },
     };
+	info!("applied changes");
     Ok(())
 }
 
@@ -718,13 +726,16 @@ async fn hello2(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
     
     let data = ctx.data.read().await;
     let arcdb = data.get::<DbClientContainer>().expect("expected db client in sharemap");
-
-    let rows = &arcdb.query("SELECT * FROM test",&[]).await.expect("database failure");
-    let dbvalue : &str = rows[0].get(1);
+	
+    let row = &arcdb.query_one("SELECT id FROM channel",&[]).await.expect("database failure");
+    let dbvalue : i64 = row.get(0);
+	let adjusted : u64 = dbvalue as u64;
     
+	let channel_id = ChannelId::from(adjusted);
+	
     let message = args.message();
 
-    if let Err(why) = msg.channel_id.say(&ctx.http, dbvalue).await {
+    if let Err(why) = channel_id.say(&ctx.http, "test").await {
         println!("error: {:?}", why);
     }
 
