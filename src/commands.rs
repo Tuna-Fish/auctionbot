@@ -198,7 +198,7 @@ async fn help(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
         args.single::<String>().unwrap()
     };
     let response= match &arg1[..] {
-        "minorpaths" => "sets or views your minor path choices, usage:\n minorpaths : shows what you have chosen\n minorpaths <path1> <path2> : selects paths",
+        //"minorpaths" => "sets or views your minor path choices, usage:\n minorpaths : shows what you have chosen\n minorpaths <path1> <path2> : selects paths",
         "register" => "adds you to a game, works during registration only",
         "unregister" => "removes you from the game, works during registration only",
         "items" => "lists things available for auction.\nUsage:\n items :lists what items are available today\n items <day> : list things available on a given day\n",
@@ -207,7 +207,7 @@ async fn help(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
         "bid" => "places a bid on an item.\n usage:\n bid <ITEM> <price> <reserve> : places a bid on an item, with a reserve set\n bid <ITEM> <price> : places a bid on an item without reserve",
         "status" => "displays game state and the time until deadline\nusage:\nstatus",
         "users" => "displays all users and their points\nusage:\nusers",
-        _ => "commands:\nitems bids wins bid status users register unregister minorpaths\ntry help <command>",
+        _ => "commands:\nitems bids wins bid status users register unregister \ntry !help <command>",
     
     };
     let _ = msg.channel_id.say(&ctx.http, response).await;
