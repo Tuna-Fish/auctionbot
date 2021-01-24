@@ -32,6 +32,7 @@ use tokio::time::Duration;
 use crate::auction::auction;
 use gamestate::GameState;
 use envconfig::Envconfig;
+use gamestate::AuctionType;
 
 #[derive(Envconfig)]
 pub struct Config {
@@ -45,13 +46,31 @@ fn uid_to_u64(id : i64) -> u64{
     id as u64
 }
 
-async fn spamperson(ctx: &Context, userid: u64,newday: i16, deadline: &str,points: i32){
-	let userid = UserId(userid);
-	if let Ok(channel) = userid.create_dm_channel(&ctx).await{
+async fn spamperson(ctx: &Context, userid: u64,oldday: i16, points: i32, newstate: GameState){
+	let data = ctx.data.read().await;
+	let arcdb = data.get::<DbClientContainer>().expect("expected db client in sharemap");
 		
+	let user = UserId(userid);
+	if let Ok(channel) = user.create_dm_channel(&ctx).await{
+		let mut s = format!("Auctions for day {} were resolved.\n", oldday);
 		
+		s.push_str(&get_wins(&arcdb,Some(userid as i64),Some(oldday)).await); 
 		
-		if let Err(err) = channel.say(&ctx.http,"test").await {
+		s.push_str(&match newstate {
+			GameState::Finished => "\n Game is finished.\n".to_string(),
+			GameState::Auction{day,auctiontype,deadline,rate} => {
+				format!("{} auctions for day {} are open. {}", match auctiontype {
+					AuctionType::Race => "Nation",
+					AuctionType::Perk(_) => "Perk",
+					_ => ""
+				}, day, pretty_print_deadline(deadline)) 
+			},
+			_ => "".to_string()
+		});
+		
+		s.push_str(&format!("\nYou have {} points remaining.",points));
+		
+		if let Err(err) = channel.say(&ctx.http,s).await {
 			dbg!(err);
 		}
 	} else {
@@ -59,27 +78,45 @@ async fn spamperson(ctx: &Context, userid: u64,newday: i16, deadline: &str,point
 	}
 }
 
-async fn spamchat(ctx: &Context, newday: i16, channel: u64, deadline: &str){
+async fn spamchat(ctx: &Context, oldday: i16, channel: u64, newstate: GameState){
+	let data = ctx.data.read().await;
+	let arcdb = data.get::<DbClientContainer>().expect("expected db client in sharemap");
+	
 	let chanid = ChannelId(channel);
-	dbg!(chanid);
-	if let Err(err) = chanid.say(&ctx.http,"test").await {
+	
+	let mut s = format!("Auctions for day {} were resolved.\n", oldday);
+	s.push_str(&get_wins(&arcdb,None,Some(oldday)).await);
+	
+	s.push_str(&match newstate {
+			GameState::Finished => "\n Game is finished.\n".to_string(),
+			GameState::Auction{day,auctiontype,deadline,rate} => {
+				format!("{} auctions for day {} are open. {}", match auctiontype {
+					AuctionType::Race => "Nation",
+					AuctionType::Perk(_) => "Perk",
+					_ => ""
+				}, day, pretty_print_deadline(deadline)) 
+			},
+			_ => "".to_string()
+		});
+	
+	
+	if let Err(err) = chanid.say(&ctx.http,s).await {
 		dbg!(err);
 	};
 }
 
-async fn spam(ctx : &Context, state: GameState){
+async fn spam(ctx : Context, newstate: GameState, oldstate: GameState){
     let data = ctx.data.read().await;
     let arcdb = data.get::<DbClientContainer>().expect("expected db client in sharemap");
     
-	let (day, auctiontype, deadline, rate) = if let GameState::Auction {day,auctiontype,deadline,rate } = state {
+	let (oldday, oldauctiontype, olddeadline, oldrate) = if let GameState::Auction {day,auctiontype,deadline,rate } = oldstate {
 		(day, auctiontype, deadline, rate)
-	} else { return };
+	} else { panic!("auction during non-auction day?") };
 	
-	let ds = dbg!(pretty_print_deadline(deadline));
 	match arcdb.query_opt("SELECT id FROM channel",&[]).await.expect("dberror") {
         Some(row) => { 
-            let uid : i64 = row.get(0);
-            spamchat(&ctx,day,uid_to_u64(uid),&ds).await;
+            let channel : i64 = row.get(0);
+            spamchat(&ctx,oldday,channel as u64,newstate).await;
         },
         None => ()
     }
@@ -87,7 +124,7 @@ async fn spam(ctx : &Context, state: GameState){
         let uid = uid_to_u64(row.get(0));
         let points : i32 = row.get(1);
         if uid >12 {
-            spamperson(&ctx,uid,day,&ds,points).await;
+            spamperson(&ctx,uid,oldday,points,newstate).await;
         }
     }
 }
@@ -110,9 +147,12 @@ async fn tick(ctx : Context){
         }
     };
     if shouldauction {
-        let gamestate = auction(&ctx,true).await.expect("auction failed");
-        
-		spam(&ctx,gamestate).await;
+        if let (newgamestate, oldgamestate) = auction(&ctx,true).await.expect("auction failed") {
+			let ctx2 = ctx.clone();
+			tokio::spawn( async move {
+				spam(ctx2,newgamestate, oldgamestate).await;
+			});
+		}
     }
 
 }
@@ -131,17 +171,19 @@ struct Handler;
 #[async_trait]
 impl EventHandler for Handler {
     async fn ready(&self, ctx: Context, ready: Ready) {
-        //info!("{} is connected!", ready.user.name);
+        info!("{} is connected!", ready.user.name);
         ticker(ctx).await; 
     }
     async fn message(&self, _ctx: Context, msg: Message) {
     
         //Am I the bot, super hacky
-        //if msg.author.id == 732540354468773908 {
-        //    debug!("[{}]: {}",msg.author.name, msg.content);
-        //} else {
-        //    info!("[{}]: {}",msg.author.name, msg.content);
-        //}
+        if msg.author.id == 802472884982382672 {
+			debug!("[{}]: {}",msg.author.name, msg.content);
+        } else {
+			if msg.is_private() {
+				info!("[{}]: {}",msg.author.name, msg.content);
+			}
+        }
     }
     //async fn cache_ready(&self, ctx: Context, _guilds: Vec<GuildId>)
 }
@@ -155,7 +197,7 @@ impl EventHandler for Handler {
 struct General;
 
 #[group]
-#[commands(status,bids,bid,unregister,minorpaths)]
+#[commands(status,bids,bid,unregister)]
 struct Auction;
 
 #[group]
@@ -177,8 +219,11 @@ impl TypeMapKey for DbClientContainer {
 #[hook]
 async fn before(ctx: &Context, msg: &Message, command_name: &str) -> bool {
 
-    info!("[{}]: {} -> {}",msg.author.name, msg.content, command_name);
-
+    debug!("[{}]: {} -> {}",msg.author.name, msg.content, command_name);
+	if !msg.is_private() 
+	{
+		info!("[{}]: {}",msg.author.name, msg.content);
+	}
     true
 }
 

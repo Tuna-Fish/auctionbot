@@ -49,7 +49,7 @@ async fn get_player_uid_and_points(arcdb : &Arc<tokio_postgres::Client>, id: &Us
     }
 }
 
-async fn get_wins(arcdb : &Arc<tokio_postgres::Client>, userid: Option<i64>, day: Option<i16>) -> String {
+pub async fn get_wins(arcdb : &Arc<tokio_postgres::Client>, userid: Option<i64>, day: Option<i16>) -> String {
     let rows = match (userid, day) {
 (None,None)         => arcdb.query("SELECT users.name,wins.item,wins.day,wins.cost FROM wins INNER JOIN users ON wins.userid = users.id ORDER BY wins.day",&[]).await,
 (None,Some(d))      => arcdb.query("SELECT users.name,wins.item,wins.day,wins.cost FROM wins INNER JOIN users ON wins.userid = users.id WHERE wins.day = $1 ORDER BY wins.day",&[&d]).await,
@@ -280,8 +280,12 @@ async fn bids(ctx: &Context, msg: &Message, mut _args: Args) -> CommandResult {
             return Ok(())
         }
     };
-
-    let bids = get_bids(arcdb, userid, day).await;
+	
+	let bids = if msg.is_private() {
+		get_bids(arcdb, userid, day).await
+	} else {
+		"Maybe don't do this in a public channel?".to_string()
+	};
     let _ = msg.channel_id.say(&ctx.http, bids).await;
     Ok(())
 }
@@ -328,7 +332,6 @@ pub fn pretty_print_deadline(deadline: NaiveDateTime) -> String {
 }
 #[command]
 async fn status(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
-	dbg!("in status");
     let data = ctx.data.read().await;
     let arcdb = data.get::<DbClientContainer>().expect("expected db client in sharemap");
    
@@ -348,7 +351,7 @@ async fn status(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
     Ok(())
 }
 
-#[command]
+//#[command]
 async fn minorpaths(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
     let data = ctx.data.read().await;
 

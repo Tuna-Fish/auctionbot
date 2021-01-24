@@ -45,7 +45,7 @@ pub fn first_char(s : &str) -> char {
     s.chars().next().unwrap()
 }
 
-pub async fn auction(ctx: &Context, advance: bool) -> Option<GameState> {
+pub async fn auction(ctx: &Context, advance: bool) -> Option<(GameState,GameState)> {
     let data = ctx.data.read().await;
 
     let gamestatearc = data.get::<GameStateContainer>().unwrap();
@@ -231,7 +231,7 @@ pub async fn auction(ctx: &Context, advance: bool) -> Option<GameState> {
         let gamestate =  *gamestatewriteguard;
         let newgamestate = gamestate.advance(&arcdb).await;
 		*gamestatewriteguard = newgamestate;
-		Some(newgamestate)
+		Some((newgamestate, gamestate))
     } else { None };
 	
 }
