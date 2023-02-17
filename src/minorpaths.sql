@@ -1,7 +1,0 @@
-DROP TABLE IF EXISTS minorpaths;
-CREATE TABLE minorpaths (
-	userid bigint PRIMARY KEY,
-	path3 CHAR(1) NOT NULL,
-	path4 CHAR(2) NOT NULL,
-	CONSTRAINT fk_user FOREIGN KEY(userid) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE
-)

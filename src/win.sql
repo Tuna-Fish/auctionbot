@@ -1,5 +1,5 @@
-DROP TABLE IF EXISTS wins;
-CREATE TABLE wins (
+DROP TABLE IF EXISTS win;
+CREATE TABLE win (
 	userid BIGINT,
 	item TEXT,
 	day SMALLINT,

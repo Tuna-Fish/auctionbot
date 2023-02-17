@@ -11,7 +11,6 @@ use tokio_postgres::{NoTls};
 use serenity::{
     prelude::*,
     async_trait,
-    client::bridge::gateway::GatewayIntents,
     
     framework::standard::{
         StandardFramework,
@@ -32,7 +31,6 @@ use tokio::time::Duration;
 use crate::auction::auction;
 use gamestate::GameState;
 use envconfig::Envconfig;
-use gamestate::AuctionType;
 
 #[derive(Envconfig)]
 pub struct Config {
@@ -62,12 +60,8 @@ async fn spamperson(ctx: &Context, userid: u64,oldday: i16, points: i32, newstat
 		
 		s.push_str(&match newstate {
 			GameState::Finished => "\n Game is finished.\n".to_string(),
-			GameState::Auction{day,auctiontype,deadline,rate} => {
-				format!("{} auctions for day {} are open. {}", match auctiontype {
-					AuctionType::Race => "Nation",
-					AuctionType::Perk(_) => "Perk",
-					_ => ""
-				}, day, pretty_print_deadline(deadline)) 
+			GameState::Auction{day,deadline,rate} => {
+				format!("auctions for day {} are open. {}", day, pretty_print_deadline(deadline))
 			},
 			_ => "".to_string()
 		});
@@ -78,7 +72,7 @@ async fn spamperson(ctx: &Context, userid: u64,oldday: i16, points: i32, newstat
 			dbg!(err);
 		}
 	} else {
-		println!("failed to create channel for {}\n", userid);
+		dbg!("failed to create channel for {}\n", userid);
 	}
 }
 
@@ -93,12 +87,8 @@ async fn spamchat(ctx: &Context, oldday: i16, channel: u64, newstate: GameState)
 	
 	s.push_str(&match newstate {
 			GameState::Finished => "\n Game is finished.\n".to_string(),
-			GameState::Auction{day,auctiontype,deadline,rate} => {
-				format!("{} auctions for day {} are open. {}", match auctiontype {
-					AuctionType::Race => "Nation",
-					AuctionType::Perk(_) => "Perk",
-					_ => ""
-				}, day, pretty_print_deadline(deadline)) 
+			GameState::Auction{day,deadline,rate} => {
+				format!("auctions for day {} are open. {}", day, pretty_print_deadline(deadline))
 			},
 			_ => "".to_string()
 		});
@@ -113,8 +103,8 @@ async fn spam(ctx : Context, newstate: GameState, oldstate: GameState){
     let data = ctx.data.read().await;
     let arcdb = data.get::<DbClientContainer>().expect("expected db client in sharemap");
     
-	let (oldday, oldauctiontype, olddeadline, oldrate) = if let GameState::Auction {day,auctiontype,deadline,rate } = oldstate {
-		(day, auctiontype, deadline, rate)
+	let (oldday, olddeadline, oldrate) = if let GameState::Auction {day,deadline,rate } = oldstate {
+		(day, deadline, rate)
 	} else { panic!("auction during non-auction day?") };
 	
 	match arcdb.query_opt("SELECT id FROM channel",&[]).await.expect("dberror") {
@@ -143,7 +133,7 @@ async fn tick(ctx : Context){
         let gamestatearc = data.get::<GameStateContainer>().expect("expected gamestate in sharemap");
         let gamestatereadguard = (&gamestatearc).read().await;
         match *gamestatereadguard {
-            GameState::Auction{day,auctiontype,deadline,rate} => {
+            GameState::Auction{day,deadline,rate} => {
                 oldday = day;
 				deadline < now
 				},
@@ -174,14 +164,9 @@ async fn ticker(ctx: Context)
 struct Handler;
 #[async_trait]
 impl EventHandler for Handler {
-    async fn ready(&self, ctx: Context, ready: Ready) {
-        info!("{} is connected!", ready.user.name);
-        ticker(ctx).await; 
-    }
-    async fn message(&self, _ctx: Context, msg: Message) {
-    
-        //Am I the bot, super hacky
-        if msg.author.id == 802472884982382672 {
+    async fn message(&self, ctx: Context, msg: Message) {
+
+        if msg.is_own(&ctx.cache) {
 			debug!("[{}]: {}",msg.author.name, msg.content);
         } else {
 			if msg.is_private() {
@@ -189,7 +174,10 @@ impl EventHandler for Handler {
 			}
         }
     }
-    //async fn cache_ready(&self, ctx: Context, _guilds: Vec<GuildId>)
+    async fn ready(&self, ctx: Context, ready: Ready) {
+        info!("{} is connected!", ready.user.name);
+        ticker(ctx).await;
+    }
 }
 
 
@@ -197,7 +185,7 @@ impl EventHandler for Handler {
 
 
 #[group]
-#[commands(users,help,wins,items,register,hello2)]
+#[commands(users,help,wins,register,hello2)]
 struct General;
 
 #[group]
@@ -267,9 +255,8 @@ async fn main() {
         .group(&AUCTION_GROUP);
 
 
-    let mut client = Client::builder(config.token)
+    let mut client = Client::builder(config.token, GatewayIntents::DIRECT_MESSAGES | GatewayIntents::GUILD_MESSAGES )
         .event_handler(Handler)
-        .intents(GatewayIntents::DIRECT_MESSAGES | GatewayIntents::GUILD_MESSAGES )
         .framework(framework)
         .await
         .expect("couldn't create the new client!");

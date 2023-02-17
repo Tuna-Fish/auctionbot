@@ -4,7 +4,7 @@ use serenity::prelude::*;
 use crate::DbClientContainer;
 use crate::GameStateContainer;
 use crate::gamestate::GameState;
-use crate::gamestate::AuctionType;
+use crate::gamestate::{auctions_per_day, items_per_auction };
 use rand::prelude::*;
 use std::collections::HashMap;
 use std::cmp;
@@ -50,74 +50,37 @@ pub async fn auction(ctx: &Context, advance: bool) -> Option<(GameState,GameStat
 
     let gamestatearc = data.get::<GameStateContainer>().unwrap();
     let mut gamestatewriteguard = (&gamestatearc).write().await;
-    let (day, rate, auctiontype) = match *gamestatewriteguard {
-        GameState::Auction{day, auctiontype, deadline, rate} => (day, rate, auctiontype),
+    let (day, rate) = match *gamestatewriteguard {
+        GameState::Auction{day, deadline, rate} => (day, rate),
         _ => { error!("called auction on non-auction day");
                 return None;
         }   
     };
 
     let arcdb = data.get::<DbClientContainer>().expect("where is my db?");
-    
-    let mut outer : Vec<Vec<Bid>> = match auctiontype {
-        AuctionType::Race => {
-            let mut outer = Vec::new();
-            let mut bids = Vec::new();
-            let rows = arcdb.query("SELECT userid,racename,bid FROM racebids",&[]).await.expect("error loading all racebids");
-            for row in rows {
-                let userid : i64 = row.get(0);
-                let bid : i32 = row.get(2);
-                bids.push(Bid {
-                        item: row.get(1),
-                        user: userid,
-                        price:  bid,
-                        reserve: 0,
-                });
 
-            }
-            outer.push(bids);
-            outer
-        }, /*
-        i @2..=3 => {
-            let mut outer = Vec::new();
-            let mut bids = Vec::new();
-            let priority = i-1;
-            let rows = arcdb.query("SELECT userid,pathname,bid FROM pathbids WHERE priority = $1",&[&priority]).await.expect("error loading all pathbids");
-            for row in rows {
-                let path : String = row.get(1);
-                bids.push(Bid {
-                        item: format!("{}_{}", path,["PRIMARY","SECONDARY"][(priority as usize)-1]),
-                        user: row.get(0),
-                        price:  row.get(2),
-                        reserve: 0,
-                });
+    let nr_auctions = auctions_per_day(&arcdb,day).await;
 
+    let mut outer : Vec<Vec<Bid>> = {
+        let mut outer = Vec::new();
+        for j in 1..=nr_auctions {
+            let mut bids = Vec::new();
+            let nr = j as i16;
+            let rows = arcdb.query("SELECT bid.userid,bid.itemname, bid.bid, bid.reserve FROM bid INNER JOIN item ON (bid.itemname = item.name) WHERE (item.day = $1) AND (item.nr = $2)",&[&day,&nr]).await.expect("error loading all bids");
+            for row in rows {
+                bids.push(Bid {
+                    item: row.get(1),
+                    user: row.get(0),
+                    price:  row.get(2),
+                    reserve: row.get(3),
+                });
             }
             outer.push(bids);
-            outer
-        },*/
-        AuctionType::Perk(nrperks) => {
-            let mut outer = Vec::new();
-            for j in 1..=nrperks {
-                let mut bids = Vec::new();
-                let nr = j as i16;
-                let rows = arcdb.query("SELECT perkbids.userid,perkbids.perkname, perkbids.bid, perkbids.reserve FROM perkbids INNER JOIN perks ON (perkbids.perkname = perks.name) WHERE  (perks.day = $1) AND (perks.nr = $2)",&[&day,&nr]).await.expect("error loading all perkbids");
-                for row in rows {
-                    bids.push(Bid {
-                        item: row.get(1),
-                        user: row.get(0),
-                        price:  row.get(2),
-                        reserve: row.get(3),
-                    });
-                }
-            outer.push(bids);
-            }
-            outer
-        },
-        _ => unreachable!()
+        }
+        outer
     };
     
-    let userrows = arcdb.query("SELECT id, name, points FROM users",&[]).await.expect("muh users");
+    let userrows = arcdb.query("SELECT id, name, points FROM discorduser",&[]).await.expect("muh users");
     let mut users = HashMap::new();
     for row in userrows {
         let user = User {
@@ -129,24 +92,10 @@ pub async fn auction(ctx: &Context, advance: bool) -> Option<(GameState,GameStat
         users.insert(user.id,user);
     }
 
-
-
-    let mut pathbasket = HashMap::new();
-    pathbasket.insert('A',2);
-    pathbasket.insert('E',2);
-    pathbasket.insert('F',2);
-    pathbasket.insert('W',2);
-    pathbasket.insert('S',2);
-    pathbasket.insert('D',2);
-    pathbasket.insert('N',2);
-    pathbasket.insert('B',2);
-    
-
     let mut rng = StdRng::from_entropy();
 
     for mut bids in outer {
         (&mut bids[..]).shuffle(&mut rng);
-        let mut wins_this_auction = 0;
         loop {
             //no more bids, we are done
             if bids.len() == 0 {
@@ -162,14 +111,7 @@ pub async fn auction(ctx: &Context, advance: bool) -> Option<(GameState,GameStat
             //finding highest bid
             bids.sort();
             let winner = bids.pop().expect("no highest bid in a list with >0 entries");
-            
-            //minimum bid of 10 for perk auctions
-            if let AuctionType::Perk(..) = auctiontype {
-				if winner.price < 10 {
-					break;
-				}
-            }
-            //prices of 0 are dead bids
+
             if winner.price == 0 {
                 break;
             }
@@ -185,16 +127,11 @@ pub async fn auction(ctx: &Context, advance: bool) -> Option<(GameState,GameStat
                         break;
                     }
             }
-            if let AuctionType::Perk(..) = auctiontype {
-				if cost < 10 {
-					cost = 10;
-				}
-            }
-            wins_this_auction += 1;
+
             users.get_mut(&winner.user).unwrap().points -= cost;
             info!(" user: {} won bid for {} with {} points", users.get(&winner.user).unwrap().name, winner.item, cost);            
-            arcdb.query("INSERT INTO wins (userid,item,day,cost) VALUES($1,$2,$3,$4)",&[&winner.user,&winner.item,&day,&cost]).await.expect("failed to store winning bid");
-            arcdb.query("UPDATE users SET points = $1 WHERE id = $2;",&[&users.get(&winner.user).unwrap().points,&users.get(&winner.user).unwrap().id]).await.expect("failed to store winner's points");
+            arcdb.query("INSERT INTO win (userid,item,day,cost) VALUES($1,$2,$3,$4)",&[&winner.user,&winner.item,&day,&cost]).await.expect("failed to store winning bid");
+            arcdb.query("UPDATE discorduser SET points = $1 WHERE id = $2;",&[&users.get(&winner.user).unwrap().points,&users.get(&winner.user).unwrap().id]).await.expect("failed to store winner's points");
             
 
             //remove invalid bids
@@ -202,28 +139,7 @@ pub async fn auction(ctx: &Context, advance: bool) -> Option<(GameState,GameStat
             bids.retain(|bid|bid.user != winner.user);
 
             //second, remove bids on items that are no longer available
-            
-            match (auctiontype, wins_this_auction) {
-                //for race and perk days, remove all bids on the same thing
-                (AuctionType::Race,_) => bids.retain(|bid|bid.item != winner.item),
-                (AuctionType::Perk(..),_) => bids.retain(|bid|bid.item != winner.item),
-                /*
-                // for primary paths, first 4 winners get uniques
-                (2, 1..=4 ) => {
-                    bids.retain(|bid|bid.item != winner.item);
-                    *pathbasket.get_mut(&first_char(&winner.item)).unwrap() = 0;
-                },
-                // for secondary paths and last 8 primary paths, there are two winners per path
-                (2..=3, _) => {
-                    let mut picks_left = pathbasket[&first_char(&winner.item)];
-                    picks_left -= 1;
-                    *pathbasket.get_mut(&first_char(&winner.item)).unwrap() = picks_left;
-                    if picks_left == 0 {    
-                        bids.retain(|bid|bid.item != winner.item);
-                    }
-                },*/
-                _ => unreachable!()
-            }
+            bids.retain(|bid|bid.item != winner.item);
         }
     }
 	
