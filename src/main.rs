@@ -39,7 +39,11 @@ pub struct Config {
 	#[envconfig(from = "DISCORD_TOKEN")]
 	pub token: String,
 	#[envconfig(from = "DATABASE_USER")]
-	pub dbuser: String
+	pub dbuser: String,
+    #[envconfig(from = "DATABASE_HOST")]
+    pub dbhost: String,
+    #[envconfig(from = "DATABASE_PW")]
+    pub dbpw: String,
 }
 
 fn uid_to_u64(id : i64) -> u64{
@@ -234,7 +238,7 @@ async fn main() {
 
 	let config = Config::init_from_env().unwrap();
 
-	let dbstring = format!("host='/var/run/postgresql/' user={}",config.dbuser);
+	let dbstring = format!("host='{}' user='{}' password='{}'",config.dbhost,config.dbuser,config.dbpw);
 
 	info!("{}",&dbstring);
 
