@@ -106,8 +106,8 @@ async fn spam(ctx : Context, newstate: GameState, oldstate: GameState){
 	let (oldday, olddeadline, oldrate) = if let GameState::Auction {day,deadline,rate } = oldstate {
 		(day, deadline, rate)
 	} else { panic!("auction during non-auction day?") };
-	
-	match arcdb.query_opt("SELECT id FROM channel",&[]).await.expect("dberror") {
+
+	match arcdb.query_opt("SELECT channel FROM gamestate",&[]).await.expect("dberror") {
         Some(row) => { 
             let channel : i64 = row.get(0);
             spamchat(&ctx,oldday,channel as u64,newstate).await;

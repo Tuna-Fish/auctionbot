@@ -472,8 +472,8 @@ async fn hello2(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
     
     let data = ctx.data.read().await;
     let arcdb = data.get::<DbClientContainer>().expect("expected db client in sharemap");
-	
-    let row = &arcdb.query_one("SELECT id FROM channel",&[]).await.expect("database failure");
+
+    let row = &arcdb.query_one("SELECT channel from gamestate",&[]).await.expect("database failure");
     let dbvalue : i64 = row.get(0);
 	let adjusted : u64 = dbvalue as u64;
     
