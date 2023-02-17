@@ -11,12 +11,14 @@ pub enum GameState {
 
 pub async fn auctions_per_day(arcdb : &Arc<tokio_postgres::Client>, day: i16) -> i32 {
     let row = arcdb.query_one("SELECT COUNT(DISTINCT nr) from item where day = $1 ;",&[&day]).await.expect("database failure counting auction days");
-    row.get(0)
+    let result: i64 = row.get(0);
+    result as i32
 }
 
 pub async fn items_per_auction(arcdb : &Arc<tokio_postgres::Client>, day: i16, nr: i16) -> i32 {
     let row = arcdb.query_one("SELECT COUNT(name) from item where day = $1 and nr = $2 ;",&[&day,&nr]).await.expect("database failure counting auctions per day");
-    row.get(0)
+    let result: i64 = row.get(0);
+    result as i32
 }
 
 impl GameState {
