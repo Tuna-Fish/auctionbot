@@ -1,0 +1,19 @@
+[Unit]
+Description=Discord Auction Bot
+
+[Service]
+Type=simple
+#path to auctionbot
+ExecStart=/bin/auctionbot
+Restart=always
+#user you want to run the bot as, an user with minimal privileges recommended
+User=auctionbot
+Group=auctionbot
+#log level, logs to journald, info | debug | none
+Environment=RUST_LOG=auctionbot=info
+Environment=DISCORD_TOKEN=your discord bot token
+Environment=DATABASE_USER=your database user name
+Environment=DATABASE_HOST=address of database to connect to here
+Environment=DATABASE_PW=database password here
+[Install]
+WantedBy=multi-user.target
