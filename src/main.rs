@@ -114,7 +114,7 @@ async fn spam(ctx : Context, newstate: GameState, oldstate: GameState){
         },
         None => ()
     }
-    for row in arcdb.query("SELECT id,points FROM users",&[]).await.expect("dberror") {
+    for row in arcdb.query("SELECT id,points FROM discorduser",&[]).await.expect("dberror") {
         let uid = uid_to_u64(row.get(0));
         let points : i32 = row.get(1);
         if uid >12 {

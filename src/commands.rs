@@ -52,7 +52,7 @@ pub async fn get_wins(arcdb : &Arc<tokio_postgres::Client>, userid: Option<i64>,
 (None,None)         => arcdb.query("SELECT discorduser.name,win.item,win.day,win.cost FROM win INNER JOIN discorduser ON win.userid = discorduser.id ORDER BY win.day",&[]).await,
 (None,Some(d))      => arcdb.query("SELECT discorduser.name,win.item,win.day,win.cost FROM win INNER JOIN discorduser ON win.userid = discorduser.id WHERE win.day = $1 ORDER BY win.day",&[&d]).await,
 (Some(uid), None)   => arcdb.query("SELECT discorduser.name,win.item,win.day,win.cost FROM win INNER JOIN discorduser ON win.userid = user.id WHERE win.userid = $1 ORDER BY win.day",&[&uid]).await,
-(Some(uid),Some(d)) => arcdb.query("SELECT discorduser.name,win.item,win.day,win.cost FROM win INNER JOIN users ON win.userid = discorduser.id WHERE win.userid = $1 AND win.day = $2 ORDER BY win.day",&[&uid,&d]).await,
+(Some(uid),Some(d)) => arcdb.query("SELECT discorduser.name,win.item,win.day,win.cost FROM win INNER JOIN discorduser ON win.userid = discorduser.id WHERE win.userid = $1 AND win.day = $2 ORDER BY win.day",&[&uid,&d]).await,
     }.expect("db error fetching wins");
     let mut s = String::from("```day|cost|             item             |winner\n");
     s.reserve(70*rows.len());
