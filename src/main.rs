@@ -249,8 +249,6 @@ async fn main() {
         config.dbhost, config.dbuser, config.dbpw
     );
 
-    info!("{}", &dbstring);
-
     let (dbclient, connection) = tokio_postgres::connect(&dbstring, NoTls).await.unwrap();
     tokio::spawn(async move {
         if let Err(e) = connection.await {
